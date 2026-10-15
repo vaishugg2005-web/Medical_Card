@@ -152,6 +152,9 @@ def request_normal_access(
         patient_id=acc_req.patient_id,
         doctor_id=acc_req.doctor_id,
         doctor_name=doctor.full_name,
+        hospital_name=doctor.hospital_name,
+        patient_name=patient.full_name,
+        unique_patient_id=patient.unique_patient_id,
         reason=acc_req.reason,
         requested_scope=acc_req.requested_scope,
         status=acc_req.status,
@@ -172,12 +175,12 @@ def get_normal_verified_records(
     """
     client_ip, user_agent = get_client_telemetry(request)
 
-    # Check active consent
+    # Check active consent (most recent valid granted consent)
     consent = db.query(Consent).filter(
         Consent.patient_id == patient_id,
         Consent.doctor_id == doctor.id,
         Consent.status == "GRANTED"
-    ).first()
+    ).order_by(Consent.created_at.desc()).first()
 
     is_expired = False
     if consent and consent.expires_at:
@@ -264,12 +267,78 @@ def get_pending_requests(
             patient_id=r.patient_id,
             doctor_id=r.doctor_id,
             doctor_name=r.doctor.full_name if r.doctor else "Unknown Doctor",
+            hospital_name=r.doctor.hospital_name if r.doctor else "Unknown Hospital",
+            patient_name=r.patient.full_name if r.patient else None,
+            unique_patient_id=r.patient.unique_patient_id if r.patient else None,
             reason=r.reason,
             requested_scope=r.requested_scope,
             status=r.status,
-            requested_at=r.requested_at
+            requested_at=r.requested_at,
+            reviewed_at=r.reviewed_at
         ))
     return results
+
+@router.get("/requests/doctor", response_model=List[AccessRequestResponse])
+def get_doctor_access_requests(
+    doctor: Doctor = Depends(get_current_doctor),
+    db: Session = Depends(get_db)
+):
+    """(Doctor) Lists all access requests submitted by this physician."""
+    reqs = db.query(AccessRequest).filter(
+        AccessRequest.doctor_id == doctor.id
+    ).order_by(AccessRequest.requested_at.desc()).all()
+    results = []
+    for r in reqs:
+        results.append(AccessRequestResponse(
+            id=r.id,
+            patient_id=r.patient_id,
+            doctor_id=r.doctor_id,
+            doctor_name=doctor.full_name,
+            hospital_name=doctor.hospital_name,
+            patient_name=r.patient.full_name if r.patient else "Patient",
+            unique_patient_id=r.patient.unique_patient_id if r.patient else None,
+            reason=r.reason,
+            requested_scope=r.requested_scope,
+            status=r.status,
+            requested_at=r.requested_at,
+            reviewed_at=r.reviewed_at
+        ))
+    return results
+
+@router.get("/status/{patient_id}")
+def check_patient_consent_status(
+    patient_id: int,
+    doctor: Doctor = Depends(get_current_doctor),
+    db: Session = Depends(get_db)
+):
+    """(Doctor) Checks current consent status for a specific patient without raising an exception."""
+    consent = db.query(Consent).filter(
+        Consent.patient_id == patient_id,
+        Consent.doctor_id == doctor.id,
+        Consent.status == "GRANTED"
+    ).order_by(Consent.created_at.desc()).first()
+
+    has_active_consent = False
+    if consent and consent.expires_at:
+        exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
+        if exp >= datetime.now(timezone.utc):
+            has_active_consent = True
+
+    latest_request = db.query(AccessRequest).filter(
+        AccessRequest.patient_id == patient_id,
+        AccessRequest.doctor_id == doctor.id
+    ).order_by(AccessRequest.requested_at.desc()).first()
+
+    return {
+        "patient_id": patient_id,
+        "doctor_id": doctor.id,
+        "has_active_consent": has_active_consent,
+        "consent_status": "GRANTED" if has_active_consent else (consent.status if consent else "NONE"),
+        "status": latest_request.status if latest_request else "NONE",
+        "latest_request_id": latest_request.id if latest_request else None,
+        "latest_request_status": latest_request.status if latest_request else None,
+        "expires_at": consent.expires_at if (consent and has_active_consent) else None
+    }
 
 @router.post("/requests/{request_id}/review")
 def review_access_request(
@@ -290,15 +359,26 @@ def review_access_request(
     req.reviewed_at = datetime.now(timezone.utc)
 
     if payload.status == "APPROVED":
-        # Create or update active consent
-        consent = Consent(
-            patient_id=patient.id,
-            doctor_id=req.doctor_id,
-            scope=req.requested_scope,
-            status="GRANTED",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=30)
-        )
-        db.add(consent)
+        # Reuse an existing patient-doctor consent record to avoid duplicate or eclipsing rows
+        consent = db.query(Consent).filter(
+            Consent.patient_id == patient.id,
+            Consent.doctor_id == req.doctor_id
+        ).order_by(Consent.created_at.desc()).first()
+
+        if consent is None:
+            consent = Consent(
+                patient_id=patient.id,
+                doctor_id=req.doctor_id,
+                scope=req.requested_scope,
+                status="GRANTED",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30)
+            )
+            db.add(consent)
+        else:
+            consent.scope = req.requested_scope
+            consent.status = "GRANTED"
+            consent.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+
         AuditService.log_event(
             db=db,
             action=AuditAction.CONSENT_GRANTED.value,

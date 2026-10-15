@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -62,17 +63,30 @@ def add_treatment_record(
         raise HTTPException(status_code=404, detail="Patient record not found.")
 
     # Check authorization: active consent or active emergency event
-    has_consent = db.query(Consent).filter(
+    consent = db.query(Consent).filter(
         Consent.patient_id == patient.id,
         Consent.doctor_id == doctor.id,
         Consent.status == "GRANTED"
-    ).first()
+    ).order_by(Consent.created_at.desc()).first()
+    has_consent = False
+    if consent and consent.expires_at:
+        exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
+        if exp >= datetime.now(timezone.utc):
+            has_consent = True
 
-    has_emergency = db.query(EmergencyAccessEvent).filter(
+    emergency = db.query(EmergencyAccessEvent).filter(
         EmergencyAccessEvent.patient_id == patient.id,
         EmergencyAccessEvent.doctor_id == doctor.id,
         EmergencyAccessEvent.is_active == True
-    ).first()
+    ).order_by(EmergencyAccessEvent.created_at.desc()).first()
+    has_emergency = False
+    if emergency and emergency.expires_at:
+        exp_em = emergency.expires_at.replace(tzinfo=timezone.utc) if emergency.expires_at.tzinfo is None else emergency.expires_at
+        if exp_em >= datetime.now(timezone.utc):
+            has_emergency = True
+        else:
+            emergency.is_active = False
+            db.commit()
 
     if not has_consent and not has_emergency:
         raise HTTPException(

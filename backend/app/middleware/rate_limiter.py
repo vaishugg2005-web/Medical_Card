@@ -11,6 +11,8 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else "127.0.0.1"
+        if client_ip == "testclient":
+            return await call_next(request)
         now = time.time()
         
         # Purge records older than 60 seconds

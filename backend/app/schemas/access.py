@@ -36,6 +36,9 @@ class AccessRequestResponse(BaseModel):
     patient_id: int
     doctor_id: int
     doctor_name: Optional[str] = None
+    hospital_name: Optional[str] = None
+    patient_name: Optional[str] = None
+    unique_patient_id: Optional[str] = None
     reason: str
     requested_scope: str
     status: str

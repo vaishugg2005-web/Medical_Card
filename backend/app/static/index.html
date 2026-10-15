@@ -623,6 +623,22 @@
         </div>
       </div>
 
+      <!-- Physician Active Consents & Access Requests Queue -->
+      <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-3 w-full">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="text-base">📋</span>
+            <h3 class="text-sm font-bold text-slate-900">Patient Access Requests & Active Authorizations</h3>
+          </div>
+          <button onclick="loadDoctorAccessRequests()" class="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 transition">
+            <span>🔄</span> Refresh Status
+          </button>
+        </div>
+        <div id="doctor-requests-list" class="space-y-2 text-xs">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+
       <!-- Scanned Patient Intermediate HUD (Two Condition Access Gateway - Full Width 100%) -->
       <div id="doctor-patient-hud" class="hidden bg-white border-2 border-emerald-200 rounded-3xl p-6 lg:p-8 space-y-6 shadow-sm w-full">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -1489,12 +1505,41 @@
       const opts = { method, headers };
       if (body) opts.body = isFormData ? body : JSON.stringify(body);
       
-      const res = await fetch(API_BASE + endpoint, opts);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "API Request Failed" }));
-        throw new Error(err.detail || "Request failed");
+      let res;
+      try {
+        res = await fetch(API_BASE + endpoint, opts);
+      } catch (networkError) {
+        throw new Error("Cannot reach the API. Please ensure the backend is running at http://127.0.0.1:8000.");
       }
-      return res.json();
+
+      if (!res.ok) {
+        let detail = `Request failed (HTTP ${res.status})`;
+        try {
+          const err = await res.json();
+          if (typeof err.detail === "string") {
+            detail = err.detail;
+          } else if (Array.isArray(err.detail)) {
+            detail = err.detail.map(d => d.msg || JSON.stringify(d)).join(", ");
+          } else if (err.detail) {
+            detail = JSON.stringify(err.detail);
+          } else if (err.message) {
+            detail = err.message;
+          }
+        } catch (_) {}
+        throw new Error(detail);
+      }
+
+      // 204 No Content has no body
+      if (res.status === 204) return null;
+
+      const responseText = await res.text();
+      if (!responseText) return null;
+
+      try {
+        return JSON.parse(responseText);
+      } catch (_) {
+        return responseText;
+      }
     }
 
     // ==================== AUTHENTICATION FLOWS ====================
@@ -1564,9 +1609,25 @@
     function logout() {
       activeToken = null;
       currentUser = null;
+      currentScannedPatient = null;
+      currentBreakGlassSession = null;
       localStorage.removeItem("emq_token");
-      if (consentPollInterval) clearInterval(consentPollInterval);
+      if (consentPollInterval) {
+        clearInterval(consentPollInterval);
+        consentPollInterval = null;
+      }
       stopCameraScanner();
+
+      // Reset any active sub-displays in Doctor Portal
+      const hud = document.getElementById("doctor-patient-hud");
+      if (hud) hud.classList.add("hidden");
+      const consentInd = document.getElementById("consent-waiting-indicator");
+      if (consentInd) consentInd.classList.add("hidden");
+      const consentedDisp = document.getElementById("doctor-consented-display");
+      if (consentedDisp) consentedDisp.classList.add("hidden");
+      const triageDisp = document.getElementById("doctor-triage-display");
+      if (triageDisp) triageDisp.classList.add("hidden");
+
       renderAuthControls();
       navigate("landing");
     }
@@ -1908,8 +1969,94 @@
           `).join("");
         }
 
+        // Render Doctor Access Requests & Consents Queue
+        await loadDoctorAccessRequests();
+
       } catch (err) {
         console.error("Failed to load doctor portal", err);
+      }
+    }
+
+    async function loadDoctorAccessRequests() {
+      const container = document.getElementById("doctor-requests-list");
+      if (!container) return;
+      try {
+        const reqs = await apiCall("/access/requests/doctor");
+        if (!reqs || reqs.length === 0) {
+          container.innerHTML = `<div class="text-slate-500 italic p-3">No patient access requests recorded yet. Scan a patient card to request consent or initiate emergency triage.</div>`;
+          return;
+        }
+
+        container.innerHTML = reqs.map(r => {
+          let badge = '';
+          let actionBtn = '';
+          if (r.status === 'APPROVED') {
+            badge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">APPROVED</span>`;
+            actionBtn = `<button onclick="viewConsentedPatient(${r.patient_id})" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5">📂 View Medical Records</button>`;
+          } else if (r.status === 'PENDING') {
+            badge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">PENDING APPROVAL</span>`;
+            actionBtn = `<button onclick="checkRequestStatusDirectly(${r.patient_id})" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 transition flex items-center gap-1">🔄 Check Now</button>`;
+          } else {
+            badge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">${r.status}</span>`;
+            actionBtn = `<span class="text-slate-400 italic text-[11px]">Denied by Patient</span>`;
+          }
+
+          return `
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <strong class="text-slate-900 font-bold">${r.patient_name || 'Patient'}</strong>
+                  <span class="text-[10px] font-mono text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">${r.unique_patient_id || 'PAT-ID:' + r.patient_id}</span>
+                  ${badge}
+                </div>
+                <p class="text-slate-600 text-xs mt-1">Reason: "${r.reason}"</p>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">Requested: ${new Date(r.requested_at).toLocaleTimeString()}${r.reviewed_at ? ' • Reviewed: ' + new Date(r.reviewed_at).toLocaleTimeString() : ''}</div>
+              </div>
+              <div>
+                ${actionBtn}
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        container.innerHTML = `<div class="text-slate-500 italic p-3">Could not load access requests: ${err.message}</div>`;
+      }
+    }
+
+    async function viewConsentedPatient(patientId) {
+      try {
+        const records = await apiCall(`/access/normal/${patientId}`);
+        if (records && records.full_name) {
+          currentScannedPatient = {
+            patient_id: patientId,
+            patient_name: records.full_name,
+            unique_patient_id: records.unique_patient_id
+          };
+          renderConsentedPatientRecords(records);
+        }
+      } catch (e) {
+        alert("Could not load consented patient records: " + e.message);
+      }
+    }
+
+    async function checkRequestStatusDirectly(patientId) {
+      try {
+        const statusRes = await apiCall(`/access/status/${patientId}`);
+        if (statusRes.has_active_consent) {
+          await viewConsentedPatient(patientId);
+          await loadDoctorAccessRequests();
+        } else if (statusRes.latest_request_status === 'PENDING') {
+          alert("Patient consent is still pending. The patient needs to click 'Approve Consent' in their portal.");
+          await loadDoctorAccessRequests();
+        } else if (statusRes.latest_request_status === 'REJECTED') {
+          alert("The patient has declined this access request.");
+          await loadDoctorAccessRequests();
+        } else {
+          alert("No active consent found for this patient.");
+          await loadDoctorAccessRequests();
+        }
+      } catch (e) {
+        alert("Status check failed: " + e.message);
       }
     }
 
@@ -1985,7 +2132,31 @@
         
         document.getElementById("hud-patient-name").innerText = scanRes.patient_name;
         document.getElementById("hud-patient-id").innerText = scanRes.unique_patient_id;
-        
+
+        // Check if doctor already holds active patient consent!
+        try {
+          const statusRes = await apiCall(`/access/status/${scanRes.patient_id}`);
+          if (statusRes && statusRes.has_active_consent) {
+            const records = await apiCall(`/access/normal/${scanRes.patient_id}`);
+            if (records && records.full_name) {
+              if (consentPollInterval) {
+                clearInterval(consentPollInterval);
+                consentPollInterval = null;
+              }
+              renderConsentedPatientRecords(records);
+              return;
+            }
+          } else if (statusRes && statusRes.latest_request_status === 'PENDING') {
+            document.getElementById("doctor-patient-hud").classList.remove("hidden");
+            document.getElementById("doctor-consented-display").classList.add("hidden");
+            document.getElementById("doctor-triage-display").classList.add("hidden");
+            document.getElementById("consent-waiting-indicator").classList.remove("hidden");
+            startConsentPolling(scanRes.patient_id);
+            document.getElementById("doctor-patient-hud").scrollIntoView({ behavior: 'smooth' });
+            return;
+          }
+        } catch (_) {}
+
         // Show Gateway HUD, Hide subdisplays
         document.getElementById("doctor-patient-hud").classList.remove("hidden");
         document.getElementById("doctor-consented-display").classList.add("hidden");
@@ -2009,35 +2180,54 @@
         });
 
         document.getElementById("consent-waiting-indicator").classList.remove("hidden");
-
-        if (consentPollInterval) clearInterval(consentPollInterval);
-        consentPollInterval = setInterval(async () => {
-          try {
-            const records = await apiCall(`/access/normal/${currentScannedPatient.patient_id}`);
-            if (records && records.full_name) {
-              clearInterval(consentPollInterval);
-              renderConsentedPatientRecords(records);
-            }
-          } catch (e) {
-            // Continues waiting until approved
-          }
-        }, 2500);
-
+        startConsentPolling(currentScannedPatient.patient_id);
+        await loadDoctorAccessRequests();
       } catch (e) {
-        alert(e.message);
+        alert("Failed to submit request: " + e.message);
       }
     }
 
+    function startConsentPolling(patientId) {
+      if (consentPollInterval) clearInterval(consentPollInterval);
+      consentPollInterval = setInterval(async () => {
+        try {
+          const records = await apiCall(`/access/normal/${patientId}`);
+          if (records && records.full_name) {
+            clearInterval(consentPollInterval);
+            consentPollInterval = null;
+            document.getElementById("consent-waiting-indicator").classList.add("hidden");
+            renderConsentedPatientRecords(records);
+            await loadDoctorAccessRequests();
+          }
+        } catch (e) {
+          // Continues waiting until approved
+        }
+      }, 2500);
+    }
+
     async function checkConsentDirectly() {
-      if (!currentScannedPatient) return;
+      if (!currentScannedPatient) {
+        alert("Please lookup or scan a patient card first.");
+        return;
+      }
       try {
         const records = await apiCall(`/access/normal/${currentScannedPatient.patient_id}`);
         if (records && records.full_name) {
-          if (consentPollInterval) clearInterval(consentPollInterval);
+          if (consentPollInterval) {
+            clearInterval(consentPollInterval);
+            consentPollInterval = null;
+          }
+          document.getElementById("consent-waiting-indicator").classList.add("hidden");
           renderConsentedPatientRecords(records);
+          await loadDoctorAccessRequests();
         }
       } catch (e) {
-        alert(e.message);
+        const msg = String(e.message || "");
+        if (msg.toLowerCase().includes("not granted active consent") || msg.toLowerCase().includes("access denied")) {
+          alert("Patient consent is not approved yet. Please ask the patient to approve the pending request in their portal, then click Check Now.");
+        } else {
+          alert("Could not retrieve patient records: " + msg);
+        }
       }
     }
 

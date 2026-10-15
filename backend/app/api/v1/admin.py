@@ -161,7 +161,8 @@ def get_all_patients(
             "medications_count": len(p.medications),
             "conditions_count": len(p.conditions),
             "documents_count": len(p.documents),
-            "registered_at": p.created_at
+            "registered_at": p.created_at,
+            "created_at": p.created_at
         })
     return results
 

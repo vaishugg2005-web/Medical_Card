@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: emq_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: emq_user
+      POSTGRES_PASSWORD: emq_password
+      POSTGRES_DB: emq_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emq_user -d emq_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: emq_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: PRODUCTION
+      DEBUG: "false"
+      DATABASE_URL: postgresql://emq_user:emq_password@postgres:5432/emq_db
+      SECRET_KEY: dev-insecure-secret-key-change-in-production-0123456789abcdef0123456789
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173,http://localhost:8000"
+      AI_PROVIDER: rule_based
+      STORAGE_PROVIDER: local
+      NOTIFICATION_PROVIDER: mock
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/storage:/app/storage
+
+volumes:
+  postgres_data:

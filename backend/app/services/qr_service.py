@@ -65,6 +65,17 @@ class QRService:
             QRToken.token_hash == token_hash,
             QRToken.status == "ACTIVE"
         ).first()
+
+        if not token:
+            # Fallback: check if the doctor entered the Patient MRN / Unique ID (e.g. PAT-2026-3950)
+            patient_match = db.query(Patient).filter(Patient.unique_patient_id == token_hash).first()
+            if patient_match:
+                token = db.query(QRToken).filter(
+                    QRToken.patient_id == patient_match.id,
+                    QRToken.status == "ACTIVE"
+                ).first()
+                if not token:
+                    token = QRService.generate_token_for_patient(db, patient_match)
         
         if not token:
             return None

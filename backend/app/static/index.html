@@ -345,8 +345,9 @@
         <button onclick="switchPatientTab('documents')" id="ptab-btn-documents" class="ptab-btn px-5 py-3 border-b-2 border-transparent text-slate-500 hover:text-slate-900">
           📂 Medical Documents & Medication Bills
         </button>
-        <button onclick="switchPatientTab('consents')" id="ptab-btn-consents" class="ptab-btn px-5 py-3 border-b-2 border-transparent text-slate-500 hover:text-slate-900">
-          Doctor Consents & Access Requests
+        <button onclick="switchPatientTab('consents')" id="ptab-btn-consents" class="ptab-btn px-5 py-3 border-b-2 border-transparent text-slate-500 hover:text-slate-900 flex items-center gap-2">
+          <span>Doctor Consents & Access Requests</span>
+          <span id="patient-consent-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white">0</span>
         </button>
         <button onclick="switchPatientTab('events')" id="ptab-btn-events" class="ptab-btn px-5 py-3 border-b-2 border-transparent text-slate-500 hover:text-slate-900">
           🚨 Emergency Break-Glass History
@@ -358,6 +359,20 @@
 
       <!-- Tab Content 1: Medical History -->
       <div id="ptab-profile" class="space-y-6 w-full">
+
+        <!-- Action Alert: Pending Doctor Access Requests Banner -->
+        <div id="patient-pending-alert-banner" class="hidden p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">📋</span>
+            <div>
+              <strong class="text-amber-950 font-bold text-sm block">Physician Access Authorization Required</strong>
+              <span id="patient-pending-banner-text" class="text-xs text-amber-800">A doctor has requested access to view your medical history.</span>
+            </div>
+          </div>
+          <button onclick="switchPatientTab('consents')" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition shrink-0 flex items-center gap-1.5">
+            <span>Review & Approve Request</span> &rarr;
+          </button>
+        </div>
         
         <!-- Self-Service Action Bar -->
         <div class="bg-white border border-slate-200/90 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
@@ -432,29 +447,19 @@
           </div>
         </div>
 
-        <!-- Demographics & Advance Directives (Full 100% Width) -->
+        <!-- Designated Emergency Contacts & Emergency Instructions (Essential Scope) -->
         <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4 w-full">
-          <h3 class="font-bold text-slate-900 text-sm border-b border-slate-100 pb-2">Verified Patient Demographics & Advance Directives</h3>
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
-            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <span class="text-slate-500 block text-[10px] uppercase font-bold">Registered Mobile</span>
-              <strong id="patient-detail-phone" class="text-slate-900 font-mono text-xs">+1 (555) 019-2830</strong>
-            </div>
-            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <span class="text-slate-500 block text-[10px] uppercase font-bold">Residential Address</span>
-              <strong id="patient-detail-address" class="text-slate-900 text-xs">742 Evergreen Terrace, Apt 4B</strong>
-            </div>
-            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <span class="text-slate-500 block text-[10px] uppercase font-bold">Organ Donor Status</span>
-              <strong id="patient-organ-donor" class="text-emerald-700">Registered Donor</strong>
-            </div>
-            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <span class="text-slate-500 block text-[10px] uppercase font-bold">DNR Directive</span>
-              <strong id="patient-dnr" class="text-slate-800">No DNR Order (Full Code)</strong>
-            </div>
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <span class="text-rose-600">📞</span> Designated Emergency Contacts
+            </h3>
+            <span class="text-[10px] text-slate-500 font-medium">Alerted on Emergency Break-Glass Override</span>
+          </div>
+          <div id="patient-contacts-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <!-- Populated via JS -->
           </div>
           <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-            <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1">Emergency Instructions:</span>
+            <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1">Emergency Triage Instructions:</span>
             <p id="patient-emergency-instructions" class="text-slate-700 leading-relaxed">High risk of severe penicillin anaphylaxis. Currently on Warfarin anticoagulant therapy. Patient wears medical alert bracelet.</p>
           </div>
         </div>
@@ -1641,12 +1646,40 @@
         document.getElementById("patient-blood-badge").innerText = patient.blood_group;
         
         const displayPhone = patient.phone || "Not Set";
-        document.getElementById("patient-phone-display").innerText = displayPhone;
-        document.getElementById("patient-detail-phone").innerText = displayPhone;
-        document.getElementById("patient-detail-address").innerText = patient.address || "Not Provided";
-        document.getElementById("patient-organ-donor").innerText = patient.organ_donor ? "Registered Organ Donor" : "Not Registered";
-        document.getElementById("patient-dnr").innerText = patient.dnr_status ? "DNR Order Active (Do Not Resuscitate)" : "Full Code (No DNR Order)";
-        document.getElementById("patient-emergency-instructions").innerText = patient.emergency_instructions || "No special instructions provided.";
+        const phoneDisplay = document.getElementById("patient-phone-display");
+        if (phoneDisplay) phoneDisplay.innerText = displayPhone;
+
+        const detailPhone = document.getElementById("patient-detail-phone");
+        if (detailPhone) detailPhone.innerText = displayPhone;
+        const detailAddr = document.getElementById("patient-detail-address");
+        if (detailAddr) detailAddr.innerText = patient.address || "Not Provided";
+        const organDonor = document.getElementById("patient-organ-donor");
+        if (organDonor) organDonor.innerText = patient.organ_donor ? "Registered Organ Donor" : "Not Registered";
+        const dnrStatus = document.getElementById("patient-dnr");
+        if (dnrStatus) dnrStatus.innerText = patient.dnr_status ? "DNR Order Active (Do Not Resuscitate)" : "Full Code (No DNR Order)";
+
+        const instEl = document.getElementById("patient-emergency-instructions");
+        if (instEl) instEl.innerText = patient.emergency_instructions || "No special instructions provided.";
+
+        // Render Emergency Contacts
+        const contactsList = document.getElementById("patient-contacts-list");
+        if (contactsList) {
+          if (patient.emergency_contacts && patient.emergency_contacts.length > 0) {
+            contactsList.innerHTML = patient.emergency_contacts.map(c => `
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 flex justify-between items-center">
+                <div>
+                  <strong class="text-slate-900 font-bold block text-sm">${c.contact_name}</strong>
+                  <span class="text-[11px] text-slate-500 font-medium">${c.relationship_type || 'Primary Contact'}</span>
+                </div>
+                <span class="font-mono text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                  📞 ${c.phone}
+                </span>
+              </div>
+            `).join("");
+          } else {
+            contactsList.innerHTML = `<div class="text-slate-500 italic p-3 col-span-2">No emergency contacts registered yet.</div>`;
+          }
+        }
 
         // Render Allergies
         const allergies = await apiCall("/patients/me/allergies");
@@ -1830,26 +1863,45 @@
       try {
         const pending = await apiCall("/access/requests/pending");
         const pContainer = document.getElementById("patient-pending-requests");
-        if (pending.length === 0) {
-          pContainer.innerHTML = `<div class="text-slate-500 italic p-3">No pending doctor access requests.</div>`;
+
+        // Update banner & badge on the main Clinical Summary tab
+        const banner = document.getElementById("patient-pending-alert-banner");
+        const badge = document.getElementById("patient-consent-badge");
+        const bannerText = document.getElementById("patient-pending-banner-text");
+        if (pending.length > 0) {
+          if (banner) banner.classList.remove("hidden");
+          if (badge) { badge.classList.remove("hidden"); badge.innerText = pending.length; }
+          if (bannerText) {
+            const names = pending.map(r => `Dr. ${(r.doctor_name || "").split(" ").pop()}`).join(", ");
+            bannerText.innerText = `${names} has requested access to your medical records. Please review and respond.`;
+          }
         } else {
-          pContainer.innerHTML = pending.map(r => `
-            <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <strong class="text-slate-900 text-xs block font-bold">${r.doctor_name} (${r.hospital_name})</strong>
-                <p class="text-slate-700 text-xs mt-0.5">Reason: "${r.reason}"</p>
-                <span class="text-[10px] text-slate-500 font-mono">Requested: ${new Date(r.requested_at).toLocaleTimeString()}</span>
+          if (banner) banner.classList.add("hidden");
+          if (badge) badge.classList.add("hidden");
+        }
+
+        if (pContainer) {
+          if (pending.length === 0) {
+            pContainer.innerHTML = `<div class="text-slate-500 italic p-3">No pending doctor access requests.</div>`;
+          } else {
+            pContainer.innerHTML = pending.map(r => `
+              <div class="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                  <strong class="text-slate-900 text-xs block font-bold">${r.doctor_name} &bull; ${r.hospital_name}</strong>
+                  <p class="text-slate-700 text-xs mt-0.5">Reason: "<em>${r.reason}</em>"</p>
+                  <span class="text-[10px] text-slate-500 font-mono">Requested: ${new Date(r.requested_at).toLocaleString()}</span>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="reviewAccessRequest(${r.id}, 'APPROVED')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition">
+                    ✅ Approve
+                  </button>
+                  <button onclick="reviewAccessRequest(${r.id}, 'REJECTED')" class="px-4 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs transition">
+                    ✕ Deny
+                  </button>
+                </div>
               </div>
-              <div class="flex gap-2">
-                <button onclick="reviewAccessRequest(${r.id}, 'APPROVED')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition">
-                  Approve Consent
-                </button>
-                <button onclick="reviewAccessRequest(${r.id}, 'REJECTED')" class="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold text-xs transition">
-                  Deny
-                </button>
-              </div>
-            </div>
-          `).join("");
+            `).join("");
+          }
         }
 
         const consents = await apiCall("/access/consents");

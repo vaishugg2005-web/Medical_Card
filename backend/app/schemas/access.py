@@ -87,6 +87,40 @@ class EmergencyTriageResponse(BaseModel):
     break_glass_warning: str = "Break-glass emergency session active. This access is recorded in immutable audit logs and dispatched to patient emergency proxies."
     can_view_detailed_records: bool = False
     personal_info_masked: bool = True
-    masked_phone: str = "[RESTRICTED - PERSONAL PHONE CONCEALED IN EMERGENCY TRIAGE]"
-    masked_address: str = "[RESTRICTED - HOME ADDRESS CONCEALED IN EMERGENCY TRIAGE]"
     privacy_notice: str = "Zero-Trust Privacy Guarantee: Personal contact and address details are concealed during emergency access. Attending staff receives clinical triage data only."
+
+
+# Patient Consultation Requests
+class ConsultationRequestCreate(BaseModel):
+    doctor_id: int
+    request_type: str = "CONSULTATION"  # CONSULTATION, RECORD_REVIEW, FOLLOW_UP
+    consultation_mode: Optional[str] = "IN_PERSON"  # IN_PERSON, TELE_CONSULTATION
+    reason: str
+    preferred_date: Optional[str] = None
+    slot_time: Optional[str] = None
+
+class ConsultationRequestResponse(BaseModel):
+    id: int
+    patient_id: int
+    doctor_id: int
+    patient_name: Optional[str] = None
+    doctor_name: Optional[str] = None
+    hospital_name: Optional[str] = None
+    specialization: Optional[str] = None
+    request_type: str
+    consultation_mode: Optional[str] = "IN_PERSON"
+    reason: str
+    preferred_date: Optional[str] = None
+    slot_time: Optional[str] = None
+    status: str
+    doctor_response: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class ConsultationResponseUpdate(BaseModel):
+    status: Optional[str] = None  # ACCEPTED, CONFIRMED, REJECTED, COMPLETED
+    doctor_response: Optional[str] = None
+

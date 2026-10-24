@@ -183,7 +183,7 @@ def doctor_scan_qr(
         )
 
     return {
-        "token": token,
+        "token": qr_token.token_hash,
         "patient_id": patient.id,
         "patient_name": patient.full_name,
         "unique_patient_id": patient.unique_patient_id,

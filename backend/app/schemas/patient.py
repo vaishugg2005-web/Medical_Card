@@ -58,3 +58,24 @@ class PatientResponse(PatientBase):
 
     class Config:
         from_attributes = True
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class ProfileCompletenessResponse(BaseModel):
+    score: int
+    is_complete: bool
+    missing_fields: List[str]
+    completed_fields: List[str]
+    recommendations: List[str]
+
+class AccessHistoryItem(BaseModel):
+    id: int
+    action: str
+    actor_name: Optional[str] = None
+    actor_role: Optional[str] = None
+    reason: Optional[str] = None
+    access_scope: Optional[str] = None
+    details: Optional[str] = None
+    created_at: datetime

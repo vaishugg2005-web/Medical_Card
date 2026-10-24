@@ -6,20 +6,91 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.core.rbac import UserRole, DoctorVerificationStatus, AuditAction
 from app.models.user import User
 from app.models.patient import Patient, EmergencyContact
-from app.models.doctor import Doctor
+from app.models.doctor import Doctor, DoctorVerification
 from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
     RefreshTokenRequest,
     RegisterPatientRequest,
     RegisterDoctorRequest,
+    RegisterAdminRequest,
     UserResponse
 )
 from app.services.audit_service import AuditService
 from app.services.qr_service import QRService
+from app.services.notification_service import NotificationService
 from app.api.deps import get_current_user, get_client_telemetry
 
 router = APIRouter()
+
+@router.post("/register/admin", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def register_admin(
+    payload: RegisterAdminRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Registers a new administrator. Requires a valid ADMIN_INVITE_SECRET to prevent
+    unauthorized privilege escalation. The secret is set in the server's environment config.
+    """
+    from app.core.config import settings
+    client_ip, user_agent = get_client_telemetry(request)
+
+    # 1. Validate invite secret — first line of defence against public admin creation
+    if not settings.ADMIN_INVITE_SECRET or payload.invite_secret.strip() != settings.ADMIN_INVITE_SECRET:
+        AuditService.log_event(
+            db=db,
+            action="ADMIN_REGISTRATION_REJECTED",
+            actor_email=payload.email.lower(),
+            reason="Invalid or missing admin invite secret",
+            ip_address=client_ip,
+            user_agent=user_agent,
+            success=False
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid administrator invite secret. Contact the system owner for a valid invitation."
+        )
+
+    # 2. Check email uniqueness
+    existing_user = db.query(User).filter(User.email == payload.email.lower()).first()
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already registered.")
+
+    # 3. Create admin User (role restricted to HOSPITAL_ADMIN or SYSTEM_ADMIN by schema validator)
+    user = User(
+        email=payload.email.lower(),
+        hashed_password=get_password_hash(payload.password),
+        role=payload.role,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # 4. Audit
+    AuditService.log_event(
+        db=db,
+        action="ADMIN_REGISTRATION",
+        actor_id=user.id,
+        actor_email=user.email,
+        actor_role=user.role,
+        reason=f"Admin account created via invite: {payload.full_name} ({payload.role})",
+        ip_address=client_ip,
+        user_agent=user_agent,
+        success=True
+    )
+
+    access_token = create_access_token(subject=user.id, role=user.role)
+    refresh_token = create_refresh_token(subject=user.id, role=user.role)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user_id=user.id,
+        email=user.email,
+        role=user.role
+    )
 
 @router.post("/register/patient", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register_patient(
@@ -136,6 +207,7 @@ def register_doctor(
     db.refresh(user)
 
     # 2. Create Doctor Profile (Default Status: PENDING)
+    app_ref = f"DOC-APP-2026-{random.randint(1000, 9999)}"
     doctor = Doctor(
         user_id=user.id,
         full_name=payload.full_name,
@@ -143,6 +215,12 @@ def register_doctor(
         medical_license_number=payload.medical_license_number,
         specialization=payload.specialization,
         hospital_name=payload.hospital_name,
+        registration_authority=payload.registration_authority or "State Medical Council",
+        state_jurisdiction=payload.state_jurisdiction or "National",
+        medical_qualification=payload.medical_qualification or "MBBS",
+        professional_address=payload.professional_address,
+        years_of_experience=payload.years_of_experience or 5,
+        application_reference=app_ref,
         government_id_number=payload.government_id_number,
         verification_status=DoctorVerificationStatus.PENDING.value
     )
@@ -150,13 +228,34 @@ def register_doctor(
     db.commit()
     db.refresh(doctor)
 
+    # 3. Create Doctor Verification History Record
+    verif_record = DoctorVerification(
+        doctor_id=doctor.id,
+        reviewer_id=None,
+        previous_status="NEW_SUBMISSION",
+        new_status=DoctorVerificationStatus.PENDING.value,
+        notes=f"Initial verification application submitted with reference {app_ref}."
+    )
+    db.add(verif_record)
+    db.commit()
+
+    # 4. Notify System Administrators
+    admins = db.query(User).filter(User.role.in_([UserRole.SYSTEM_ADMIN.value, UserRole.HOSPITAL_ADMIN.value])).all()
+    for a in admins:
+        NotificationService.send_notification(
+            db=db,
+            user_id=a.id,
+            title="New Doctor Verification Application",
+            message=f"Dr. {doctor.full_name} ({doctor.specialization}) submitted application {app_ref} for license {doctor.medical_license_number}."
+        )
+
     AuditService.log_event(
         db=db,
         action="DOCTOR_REGISTRATION",
         actor_id=user.id,
         actor_email=user.email,
         actor_role=user.role,
-        reason=f"Doctor applied for verification: License {doctor.medical_license_number}",
+        reason=f"Doctor applied for verification: Ref {app_ref}, License {doctor.medical_license_number}",
         ip_address=client_ip,
         user_agent=user_agent,
         success=True
@@ -171,7 +270,10 @@ def register_doctor(
         user_id=user.id,
         email=user.email,
         role=user.role,
-        doctor_status=doctor.verification_status
+        doctor_status=doctor.verification_status,
+        verification_status=doctor.verification_status,
+        application_reference=app_ref,
+        doctor_id=doctor.id
     )
 
 @router.post("/login", response_model=TokenResponse)

@@ -19,12 +19,14 @@ from app.models.access import (
 )
 from app.models.audit import AuditLog
 from app.models.notification import Notification
+from app.models.medical_card import MedicalCard
 
 __all__ = [
     "Base",
     "User",
     "Patient",
     "EmergencyContact",
+    "MedicalCard",
     "Doctor",
     "Hospital",
     "DoctorVerification",

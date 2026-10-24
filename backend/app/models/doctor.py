@@ -32,9 +32,19 @@ class Doctor(Base):
     hospital_name = Column(String(200), nullable=False)
     government_id_number = Column(String(100), nullable=True)
     
-    # Verification lifecycle
+    # Professional Information
+    registration_authority = Column(String(150), default="State Medical Council", nullable=True)
+    state_jurisdiction = Column(String(100), default="National", nullable=True)
+    medical_qualification = Column(String(100), default="MBBS", nullable=True)
+    professional_address = Column(String(255), nullable=True)
+    years_of_experience = Column(Integer, default=5, nullable=True)
+    application_reference = Column(String(100), unique=True, index=True, nullable=True)
+
+    # Verification lifecycle & Decisions
     verification_status = Column(String(50), default=DoctorVerificationStatus.PENDING.value, index=True)
     verification_notes = Column(Text, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    information_requested = Column(Text, nullable=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     
@@ -49,6 +59,7 @@ class Doctor(Base):
     emergency_events = relationship("EmergencyAccessEvent", back_populates="doctor")
     consents = relationship("Consent", back_populates="doctor")
     access_requests = relationship("AccessRequest", back_populates="doctor")
+    consultation_requests = relationship("ConsultationRequest", back_populates="doctor", cascade="all, delete-orphan")
     documents = relationship("DoctorDocument", back_populates="doctor", cascade="all, delete-orphan")
 
 

@@ -1,0 +1,236 @@
+========================================================================================
+🏥 MEDORA — AI-POWERED SECURE EMERGENCY MEDICAL HISTORY ACCESS SYSTEM
+Product-Grade Healthcare Platform | Smart India Hackathon 2026
+========================================================================================
+
+A. RELATIVE PATH TO ENTIRE CODING FOLDER:
+----------------------------------------------------------------------------------------
+Current Workspace Root:
+  . (or .\Medical_Card)
+
+Sub-folders & Architecture:
+  • Backend (FastAPI + SQLAlchemy + Multi-DB Engine): .\backend
+  • Virtual Environment (.venv):                      .\backend\.venv
+  • Local SQLite Databases:
+      - Patient Records DB:                           .\backend\patient.db
+      - Doctor Records DB:                            .\backend\doctor.db
+      - Admin & System Audit DB:                      .\backend\admin.db
+      - Synchronized Primary Engine:                  .\backend\medical_system.db
+  • Frontend (React 18 + TypeScript + Vite + jsPDF):  .\frontend
+  • Integrated Static Web App:                        .\backend\app\static\index.html
+  • Test Suite (Pytest 15/15 passing):                .\backend\tests
+  • Architecture & Security Documentation:            .\docs
+  • Docker Compose (PostgreSQL Persistent):           .\docker-compose.yml
+  • Master Execution Script:                          .\run_dev.py
+
+
+B. LOCAL MULTI-DATABASE ARCHITECTURE & REALTIME SYNC:
+----------------------------------------------------------------------------------------
+Medora persists all domain data into dedicated SQLite files located directly in .\backend:
+  1. patient.db: Stores patients, emergency_contacts, allergies, medications,
+     medical_conditions, surgeries, visits, prescriptions, qr_tokens, consents, consultations.
+  2. doctor.db: Stores doctors, hospitals, doctor_verifications, doctor_documents.
+  3. admin.db: Stores users, audit_logs, emergency_access_events, notifications, access_requests.
+  4. Real-time Sync: MultiDB listener (SQLAlchemy after_commit hook) mirrors every transaction
+     across the respective database files instantly and deterministically.
+
+
+C. PREREQUISITES:
+----------------------------------------------------------------------------------------
+1. Python: Python 3.10 or 3.12 (Check: py -0p or python --version)
+2. Node.js & npm: Node v18+ (Check: node -v and npm -v)
+3. PostgreSQL or Docker Desktop (Optional; SQLite/PostgreSQL dual-driver configured)
+
+
+D. INITIAL SETUP (IF RE-INITIALIZING FROM SCRATCH):
+----------------------------------------------------------------------------------------
+# 1. Navigate to project root:
+cd C:\Users\Aditya\Downloads\CLG_Project\Vaishu\Medical_Card
+
+# 2. Virtual environment is already created at .\backend\.venv
+# To re-create manually if needed:
+#   py -3.10 -m venv backend/.venv
+
+# 3. Install backend dependencies into virtual environment:
+.\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+
+# 4. Install frontend npm dependencies:
+cd frontend
+npm install
+cd ..
+
+
+E. HOW TO RUN THE APPLICATION (TWO WORKFLOW OPTIONS):
+----------------------------------------------------------------------------------------
+
+--- OPTION 1: ALL-IN-ONE SINGLE COMMAND (EASIEST & RECOMMENDED) ---
+From the workspace root, run:
+  .\backend\.venv\Scripts\python.exe run_dev.py
+
+Or from backend directory:
+  $env:PYTHONPATH="backend"
+  .\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+
+Access in Browser:
+  • Integrated Medora Web App:  http://localhost:8000
+  • Swagger REST API Docs:      http://localhost:8000/docs
+  • Health Check:               http://localhost:8000/health
+  • Prometheus Telemetry:       http://localhost:8000/metrics
+
+
+--- OPTION 2: DUAL-TERMINAL WORKFLOW (VITE REACT + FASTAPI) ---
+
+Terminal 1 (FastAPI Backend):
+  cd backend
+  $env:PYTHONPATH="."
+  .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+
+Terminal 2 (React Vite Frontend):
+  cd frontend
+  npm run dev
+
+Access in Browser:
+  • Primary Landing Page:       http://localhost:5173/
+  • Patient Portal Gateway:     http://localhost:5173/patient_dashboard
+      └── After Authentication: http://localhost:5173/patient_dashboard/sarah_jenkins
+  • Doctor Portal Gateway:      http://localhost:5173/Doctor_dashboard
+      └── After Authentication: http://localhost:5173/Doctor_dashboard/dr_arun_sharma
+  • Admin Portal Gateway:       http://localhost:5173/admin_dashboard
+      └── After Authentication: http://localhost:5173/admin_dashboard/chief_admin
+  • Backend API & Swagger Docs: http://localhost:8000/docs
+
+
+F. PRE-SEEDED DEMONSTRATION ACCOUNTS:
+----------------------------------------------------------------------------------------
+1. Patient Portal:
+   • Email:    patient@example.com
+   • Password: PatientDemo123!
+   • Features: Medical timeline, consultation requests to doctors, approve/reject doctor
+               access requests, instant consent revocation, printable emergency QR card.
+
+2. Doctor Portal:
+   • Email:    doctor@example.com
+   • Password: DoctorDemo123!
+   • Features: QR token scan & lookup, patient consultation queue, Level 2 normal consent
+               requests, Level 3 Emergency Break-Glass Override with 15-minute countdown,
+               AI Emergency Clinical Synthesis, clinical visits authoring & prescriptions.
+
+3. Admin Portal:
+   • Email:    admin@example.com
+   • Password: AdminSecure123!
+   • Features: Live system telemetry, physician credential verification (verify, reject,
+               suspend, reinstate), patient registry, tamper-evident audit logs.
+
+4. Emergency QR Token (Opaque Hash):
+   • Token:    demo-emergency-token-9812
+
+
+G. UPDATED MEDORA ARCHITECTURE & 3-AREA WORKSPACES:
+----------------------------------------------------------------------------------------
+1. Full-Height 3-Area Doctor Dashboard:
+   • Left Sidebar:
+       Dashboard • Patients • Medical Records • Prescriptions • Consultations
+       • Access Requests • Emergency Access • Notifications • Profile • Settings
+   • Middle Patient-Selection Panel:
+       Real-time patient registry with search, status filters (All, Authorized,
+       Emergency Active, Pending Consent), and minimal identifiers (unique_patient_id,
+       blood group). Patient selection does NOT bypass authorization.
+   • Full-Width Clinical Workspace:
+       Multi-tab clinical suite for authorized patients (Summary, Diagnoses, Allergies,
+       Current/Historical Medications, Prescriptions, Surgeries, Clinical Notes, and
+       Provenance Change History).
+   • Editable Clinical Records:
+       Verified doctors can author diagnoses, medications, allergies, and notes with
+       immutable authorship logging, automatic audit creation, and cross-portal notification.
+
+2. Comprehensive 18-Workspace Patient Portal (Patient Dashboard):
+   • Left Categorized Navigation (18 Workspaces):
+       1. Dashboard Overview      - Completeness gauge, metrics, quick vitals, AI clinical highlights
+       2. My Profile              - Personal details, emergency contacts, profile completeness checklist
+       3. My Medical History      - Chronological medical timeline with multi-category filters
+       4. Conditions & Diseases   - Active and historical diagnosed conditions
+       5. Allergies & Warnings    - Severe allergies, anaphylaxis risks, clinical warnings
+       6. Medications & Rx        - Active prescriptions, dosages, informational adherence reminders
+       7. Surgeries & Procedures  - Surgical history, hospital, dates, clinical notes
+       8. Consultations & Reports - Clinical visits, document library, report upload/download/deletion
+       9. Appointments Queue      - Upcoming and past booked consultations with status badges
+      10. Find a Doctor           - Real-time directory of verified doctors with search and booking modal
+      11. My Requests             - Patient-initiated consultation and records requests
+      12. Doctor Access Requests  - Pending clinical access requests from doctors with Approve/Reject
+      13. Consent & Privacy       - Active consent grants with one-click revocation
+      14. Emergency Medical Card  - QR card preview with browser-side jsPDF download
+      15. Access History & Audits - Comprehensive tamper-evident access log, break-glass events
+      16. Notifications Center    - Real-time alerts, mark as read, bulk mark all as read
+      17. Settings & Security     - Bcrypt password change, privacy directives, notification preferences
+      18. Help & Support          - Emergency guidance, FAQ knowledge base, support contact
+   • Strict Privacy & Authorship Boundary:
+       Patients can update their own permitted personal details (phone, address, instructions),
+       while clinician-authored records (diagnoses, allergies, medications, surgeries, prescriptions)
+       can only be authored or modified by verified attending doctors.
+   • Ground-Truth AI Clinical Summary:
+       Zero-hallucination deterministic synthesis generated solely from active database records.
+
+3. Doctor Verification, Admin Approval & Patient Appointment Workflow:
+   • Doctor Registration:
+     Collects legal name, medical license, registration authority (NMC/State Council),
+     jurisdiction, qualification, specialization, hospital, experience, and terms acceptance.
+     Initial status is strictly PENDING with an audit reference (DOC-APP-2026-XXXX).
+   • Admin Verification Center (Admin Portal):
+     Real database-backed counts for Pending, Under Review, Verified, Rejected, Suspended.
+     Searchable queue by doctor name and license; filters by status and specialization.
+     Decision actions: Approve, Reject (mandatory reason), Request Information, Suspend, Reinstate.
+   • Patient Portal Verified Doctor Directory (Appointments → Find a Doctor):
+     Strict security barrier: ONLY doctors with verification_status == 'VERIFIED' and active accounts
+     appear in the directory. Never displays pending, rejected, or suspended doctors.
+     Empty State: If no doctors are available, renders:
+       "No doctors are currently available for consultation. Please check again later."
+       "Medora displays only doctors who have completed professional verification and are
+       currently eligible to accept consultations. No matching doctors are available at the moment."
+   • Appointment Booking & Doctor Queue:
+     Patient selects verified doctor, consultation mode (In-Person OPD / Tele-Consultation),
+     preferred date, slot time, and symptoms.
+     Backend revalidates doctor verification and prevents slot collisions (409 Conflict).
+     Doctor views appointment in queue and accepts (CONFIRMED) or declines (REJECTED).
+   • Zero-Trust Privacy Principle:
+     Appointment booking NEVER grants medical history access. Outpatient record access still
+     strictly requires explicit Level 2 Patient Consent or Level 3 Emergency Break-Glass.
+
+4. Cross-Portal Real-Time Synchronization Workflows:
+   • Patient submits consultation request → Doctor's queue updates instantly.
+   • Doctor requests outpatient consent → Patient receives approval prompt.
+   • Patient approves or revokes consent → Doctor's authorization status updates immediately.
+   • Doctor authors new clinical diagnosis or Rx → Patient timeline refreshes with notification.
+   • Break-glass emergency override initiated → 15-minute countdown starts with audit logging.
+
+
+H. RUNNING AUTOMATED TESTS:
+----------------------------------------------------------------------------------------
+Execute the complete test suite (15 passing tests covering auth, break-glass, consents,
+consultations, doctor verification & appointment lifecycle, patient dashboard & completeness, QR levels, and AI summarizer):
+  $env:PYTHONPATH="backend"; $env:PYTHONIOENCODING="utf-8"
+  .\backend\.venv\Scripts\python.exe -m pytest backend/tests -v
+
+
+
+I. BUILDING FRONTEND FOR PRODUCTION:
+----------------------------------------------------------------------------------------
+  cd frontend
+  npm run build
+  cd ..
+
+
+J. TROUBLESHOOTING COMMON ISSUES:
+----------------------------------------------------------------------------------------
+1. Port 8000 or 5173 already in use:
+   Stop existing process or run on another port:
+   .\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8080
+
+2. Python ModuleNotFoundError: 'app':
+   Ensure PYTHONPATH is set before starting uvicorn:
+   $env:PYTHONPATH="backend"
+
+3. Execution Policy restrictions in PowerShell:
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+========================================================================================
+
+

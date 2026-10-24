@@ -11,6 +11,7 @@ from app.models.medical import Allergy, Medication, MedicalCondition, Surgery
 from app.core.rbac import DoctorVerificationStatus, AuditAction, AccessLevel
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
+from app.services.qr_service import QRService
 from app.core.config import settings
 
 class BreakGlassService:
@@ -56,11 +57,8 @@ class BreakGlassService:
                 detail=f"Break-glass denied: Doctor status is '{doctor.verification_status}'. Only VERIFIED medical personnel can activate emergency access."
             )
 
-        # 2. Validate QR Token
-        qr_token = db.query(QRToken).filter(
-            QRToken.token_hash == qr_token_hash,
-            QRToken.status == "ACTIVE"
-        ).first()
+        # 2. Validate QR Token (supports clean hash, demo token, and patient MRN)
+        qr_token = QRService.validate_token(db, qr_token_hash)
 
         if not qr_token:
             raise HTTPException(

@@ -53,12 +53,28 @@ The **Emergency Medical QR Health System (EMQ-HS)** eliminates this hazard throu
 
 ## 🚀 Quickstart Guide
 
-### Option 1: Instant Single-Command Local Run (Recommended)
-This runs the full-stack system with SQLite and pre-seeded demo accounts. No external database setup required:
+### Option 0: One-Click Windows Setup (Recommended)
+Double-click `setup.bat` in the project root. It automatically:
+1. Detects project directories and verifies prerequisites (Python 3.10+, Node.js v18+, npm).
+2. Prompts to choose an editor (VS Code, Antigravity, or custom executable), remembers your choice, and opens the project.
+3. Creates or validates the backend virtual environment at `backend\.venv` and installs any missing dependencies.
+4. Prepares `backend\.env` from `.env.example` and verifies SQLite databases.
+5. Launches the FastAPI backend (port 8000) and React Vite frontend (port 5173) in two persistent terminal windows.
+6. Polls `/health` and frontend HTTP readiness.
+7. Automatically opens `http://localhost:5173` in your default browser once both services are verified healthy.
+
+```cmd
+:: From File Explorer, simply double-click setup.bat
+:: Or from command prompt / terminal:
+setup.bat
+```
+
+### Option 1: Instant Single-Command Local Run (run_dev.py)
+This runs the full-stack system with SQLite and pre-seeded demo accounts:
 
 ```bash
 # 1. Navigate to the project root
-cd secure-emergency-medical-system
+cd Medical_Card
 
 # 2. Run the unified launcher
 python run_dev.py
@@ -98,35 +114,40 @@ The database is automatically pre-seeded with realistic clinical data:
 
 ## ⚡ Live Presentation Demonstration Flow
 
-1. **Level 1 Public Security Barrier**:
-   - Open `http://localhost:8000`.
-   - Click **"Simulate Public Level-1 QR Scan"**.
-   - Verify that **NO medical data is shown** to unauthenticated scans.
-2. **Physician Break-Glass Activation**:
-   - Log in as `doctor@example.com`.
-   - Lookup token `demo-emergency-token-9812`.
-   - Select **"Level 3: Break-Glass Emergency"**.
-   - Enter reason (*"Unconscious trauma victim, unresponsive"*) and activate.
-3. **Inspect High-Contrast Triage HUD & AI Clinical Synthesis**:
-   - Immediate unlock of **Blood Group O+**, **Penicillin Anaphylaxis Alert**, and **Warfarin Bleeding Risk Warning**.
-   - Review the AI Emergency Summary synthesized strictly from verified records with zero hallucinations.
-4. **Patient Audit Transparency & Proxy Alert**:
-   - Log in as `patient@example.com`.
-   - View **Emergency Access History** showing Dr. Vance's exact access time, hospital, and justification.
-   - Review the terminal output for the simulated SMS alert dispatched to the patient's spouse!
-5. **Admin Credentialing Queue**:
-   - Log in as `admin@example.com`.
-   - Review pending physician licenses and promote `Dr. Julian Hayes` to `VERIFIED`.
+1. **Doctor Registration & Verification Lifecycle**:
+   - Navigate to `/Doctor_dashboard` and select **"Physician Licensure Registration"**.
+   - Submit legal credentials, registration authority (e.g. National Medical Commission), qualification, and hospital affiliation.
+   - Initial application is created with status **`PENDING`** and unique tracking reference (e.g., `DOC-APP-2026-XXXX`).
+   - Doctor dashboard displays verification status banner; clinical appointment privileges are restricted.
+2. **Admin Doctor Verification Center**:
+   - Log in as `admin@example.com` (`AdminSecure123!`) on `/admin_dashboard`.
+   - Access **"Doctor Verification"** center with real database counts for Pending, Under Review, Verified, Rejected, Suspended.
+   - Search doctor by name or license, review submitted dossier, and execute **"Approve Doctor"**.
+3. **Patient Verified Doctor Directory & Appointment Booking**:
+   - Log in as `patient@example.com` (`PatientDemo123!`) on `/patient_dashboard`.
+   - Navigate to **"Appointments → Find a Doctor"**.
+   - Notice strictly verified doctors appear with verified credentials and badges.
+   - If no doctors are available or filtered out, system displays:
+     *"No doctors are currently available for consultation. Please check again later."*
+   - Click **"Book Appointment"**, select Consultation Mode (In-Person OPD / Tele-Consultation), preferred date, available slot, symptoms, and optional note.
+   - Backend performs atomic validation, prevents slot collisions (`409 Conflict`), and dispatches notification.
+4. **Doctor Appointment Response & Zero-Trust Privacy**:
+   - Log in as the doctor, open **"Consultations"** queue, and accept appointment with instructions (`CONFIRMED`).
+   - Patient timeline and status reflect the confirmation.
+   - **Zero-Trust Record Isolation**: Appointment booking does **NOT** grant medical record access; patient outpatient history remains locked until explicit Level 2 Consent or Level 3 Emergency Break-Glass is performed.
+5. **Level 1 Public Security Barrier & Level 3 Break-Glass**:
+   - Scan public QR code: minimal identity only; zero clinical data leaked.
+   - Verified doctor activates Level 3 Break-Glass with 15-minute countdown, AI synthesis, and immutable audit logs.
 
 ---
 
 ## 🧪 Automated Testing
 
-Run the automated backend test suite covering authentication, RBAC, QR security barriers, Break-Glass protocols, and AI hallucination guardrails:
+Run the automated backend test suite covering authentication, RBAC, doctor verification workflow, appointment booking, slot collision protection, QR security barriers, Break-Glass protocols, and AI hallucination guardrails:
 
 ```bash
-cd backend
-pytest tests/ -v
+$env:PYTHONPATH="backend"; $env:PYTHONIOENCODING="utf-8"
+.\backend\.venv\Scripts\python.exe -m pytest backend/tests/ -v
 ```
 
 ---

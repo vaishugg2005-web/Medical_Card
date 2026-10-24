@@ -144,7 +144,8 @@ def request_normal_access(
         access_scope=payload.requested_scope,
         ip_address=client_ip,
         user_agent=user_agent,
-        success=True
+        success=True,
+        details=f"Dr. {doctor.full_name} ({doctor.hospital_name or 'Unknown Hospital'}) requested access. Request ID: {acc_req.id}"
     )
 
     return AccessRequestResponse(
@@ -250,6 +251,48 @@ def get_normal_verified_records(
 # ==============================================================================
 # PATIENT CONSENT MANAGEMENT
 # ==============================================================================
+@router.get("/requests/all", response_model=List[AccessRequestResponse])
+def get_all_requests_for_patient(
+    patient: Patient = Depends(get_current_patient),
+    db: Session = Depends(get_db)
+):
+    """(Patient) Lists ALL access requests (all statuses) for this patient's complete history."""
+    reqs = db.query(AccessRequest).filter(
+        AccessRequest.patient_id == patient.id
+    ).order_by(AccessRequest.requested_at.desc()).all()
+    now = datetime.now(timezone.utc)
+    results = []
+    for r in reqs:
+        # Compute effective status: if APPROVED but consent is gone/expired → REVOKED/EXPIRED
+        effective_status = r.status
+        if effective_status == "APPROVED":
+            consent = db.query(Consent).filter(
+                Consent.patient_id == r.patient_id,
+                Consent.doctor_id == r.doctor_id,
+                Consent.status == "GRANTED"
+            ).order_by(Consent.created_at.desc()).first()
+            if not consent:
+                effective_status = "REVOKED"
+            elif consent.expires_at:
+                exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
+                if exp < now:
+                    effective_status = "EXPIRED"
+        results.append(AccessRequestResponse(
+            id=r.id,
+            patient_id=r.patient_id,
+            doctor_id=r.doctor_id,
+            doctor_name=r.doctor.full_name if r.doctor else "Unknown Doctor",
+            hospital_name=r.doctor.hospital_name if r.doctor else "Unknown Hospital",
+            patient_name=r.patient.full_name if r.patient else None,
+            unique_patient_id=r.patient.unique_patient_id if r.patient else None,
+            reason=r.reason,
+            requested_scope=r.requested_scope,
+            status=effective_status,
+            requested_at=r.requested_at,
+            reviewed_at=r.reviewed_at
+        ))
+    return results
+
 @router.get("/requests/pending", response_model=List[AccessRequestResponse])
 def get_pending_requests(
     patient: Patient = Depends(get_current_patient),
@@ -288,7 +331,23 @@ def get_doctor_access_requests(
         AccessRequest.doctor_id == doctor.id
     ).order_by(AccessRequest.requested_at.desc()).all()
     results = []
+    now = datetime.now(timezone.utc)
     for r in reqs:
+        # Re-check live consent status so revoked/expired permissions immediately disable access
+        effective_status = r.status
+        if effective_status == "APPROVED":
+            consent = db.query(Consent).filter(
+                Consent.patient_id == r.patient_id,
+                Consent.doctor_id == doctor.id,
+                Consent.status == "GRANTED"
+            ).order_by(Consent.created_at.desc()).first()
+            if not consent:
+                effective_status = "REVOKED"
+            elif consent.expires_at:
+                exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
+                if exp < now:
+                    effective_status = "EXPIRED"
+
         results.append(AccessRequestResponse(
             id=r.id,
             patient_id=r.patient_id,
@@ -299,7 +358,7 @@ def get_doctor_access_requests(
             unique_patient_id=r.patient.unique_patient_id if r.patient else None,
             reason=r.reason,
             requested_scope=r.requested_scope,
-            status=r.status,
+            status=effective_status,
             requested_at=r.requested_at,
             reviewed_at=r.reviewed_at
         ))
@@ -319,9 +378,12 @@ def check_patient_consent_status(
     ).order_by(Consent.created_at.desc()).first()
 
     has_active_consent = False
-    if consent and consent.expires_at:
-        exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
-        if exp >= datetime.now(timezone.utc):
+    if consent:
+        if consent.expires_at:
+            exp = consent.expires_at.replace(tzinfo=timezone.utc) if consent.expires_at.tzinfo is None else consent.expires_at
+            if exp >= datetime.now(timezone.utc):
+                has_active_consent = True
+        else:
             has_active_consent = True
 
     latest_request = db.query(AccessRequest).filter(
@@ -329,14 +391,18 @@ def check_patient_consent_status(
         AccessRequest.doctor_id == doctor.id
     ).order_by(AccessRequest.requested_at.desc()).first()
 
+    latest_status = latest_request.status if latest_request else None
+    if latest_status == "APPROVED" and not has_active_consent:
+        latest_status = "REVOKED"
+
     return {
         "patient_id": patient_id,
         "doctor_id": doctor.id,
         "has_active_consent": has_active_consent,
         "consent_status": "GRANTED" if has_active_consent else (consent.status if consent else "NONE"),
-        "status": latest_request.status if latest_request else "NONE",
+        "status": latest_status or "NONE",
         "latest_request_id": latest_request.id if latest_request else None,
-        "latest_request_status": latest_request.status if latest_request else None,
+        "latest_request_status": latest_status,
         "expires_at": consent.expires_at if (consent and has_active_consent) else None
     }
 
@@ -354,6 +420,15 @@ def review_access_request(
     ).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found.")
+    if req.status != "PENDING":
+        raise HTTPException(status_code=400, detail=f"Request is already {req.status} and cannot be reviewed again.")
+
+    # Validate allowed decision values
+    if payload.status not in ("APPROVED", "REJECTED"):
+        raise HTTPException(status_code=422, detail="status must be APPROVED or REJECTED.")
+
+    doctor = req.doctor
+    doctor_label = f"Dr. {doctor.full_name} ({doctor.hospital_name or 'Unknown Hospital'})" if doctor else f"Doctor #{req.doctor_id}"
 
     req.status = payload.status
     req.reviewed_at = datetime.now(timezone.utc)
@@ -383,31 +458,47 @@ def review_access_request(
             db=db,
             action=AuditAction.CONSENT_GRANTED.value,
             actor_id=patient.user_id,
+            actor_email=patient.user.email if patient.user else None,
+            actor_role="PATIENT",
             patient_id=patient.id,
             reason=f"Patient approved access request #{req.id}",
-            access_scope=req.requested_scope
+            access_scope=req.requested_scope,
+            details=f"{doctor_label} — approved by patient. Reason: {req.reason}"
         )
     else:
         AuditService.log_event(
             db=db,
-            action=AuditAction.CONSENT_REVOKED.value,
+            action=AuditAction.CONSENT_REJECTED.value,
             actor_id=patient.user_id,
+            actor_email=patient.user.email if patient.user else None,
+            actor_role="PATIENT",
             patient_id=patient.id,
-            reason=f"Patient rejected access request #{req.id}"
+            reason=f"Patient rejected access request #{req.id}",
+            details=f"{doctor_label} — rejected by patient. Reason: {req.reason}"
         )
 
     db.commit()
-    return {"message": f"Request {payload.status.lower()} successfully."}
+    return {"message": f"Request {payload.status.lower()} successfully.", "request_id": request_id, "status": payload.status}
 
 @router.get("/consents", response_model=List[ConsentResponse])
 def get_active_consents(
     patient: Patient = Depends(get_current_patient),
     db: Session = Depends(get_db)
 ):
-    """(Patient) View all granted doctor permissions."""
-    consents = db.query(Consent).filter(Consent.patient_id == patient.id).all()
+    """(Patient) View all active granted doctor permissions."""
+    consents = db.query(Consent).filter(
+        Consent.patient_id == patient.id,
+        Consent.status == "GRANTED"
+    ).all()
     res = []
+    now = datetime.now(timezone.utc)
     for c in consents:
+        if c.expires_at:
+            exp = c.expires_at.replace(tzinfo=timezone.utc) if c.expires_at.tzinfo is None else c.expires_at
+            if exp < now:
+                c.status = "EXPIRED"
+                db.commit()
+                continue
         res.append(ConsentResponse(
             id=c.id,
             patient_id=c.patient_id,
@@ -436,14 +527,28 @@ def revoke_consent(
         raise HTTPException(status_code=404, detail="Consent record not found.")
 
     consent.status = "REVOKED"
+
+    # Also update corresponding access requests to REVOKED so doctor cannot access records
+    db.query(AccessRequest).filter(
+        AccessRequest.patient_id == patient.id,
+        AccessRequest.doctor_id == consent.doctor_id,
+        AccessRequest.status == "APPROVED"
+    ).update({"status": "REVOKED"})
+
     db.commit()
+
+    doctor = consent.doctor
+    doctor_label = f"Dr. {doctor.full_name} ({doctor.hospital_name or 'Unknown Hospital'})" if doctor else f"Doctor #{consent.doctor_id}"
 
     AuditService.log_event(
         db=db,
         action=AuditAction.CONSENT_REVOKED.value,
         actor_id=patient.user_id,
+        actor_email=patient.user.email if patient.user else None,
+        actor_role="PATIENT",
         patient_id=patient.id,
-        reason=f"Patient revoked consent ID #{consent_id}"
+        reason=f"Patient revoked consent ID #{consent_id}",
+        details=f"{doctor_label} — access revoked by patient"
     )
 
-    return {"message": "Consent revoked successfully."}
+    return {"message": "Consent revoked successfully.", "consent_id": consent_id, "status": "REVOKED"}

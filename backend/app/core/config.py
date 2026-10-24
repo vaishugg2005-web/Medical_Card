@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     DEMO_DOCTOR_PASSWORD: str = "DoctorDemo123!"
     DEMO_ADMIN_PASSWORD: str = "AdminSecure123!"
 
+    # Admin Registration Invite Secret
+    # Set ADMIN_INVITE_SECRET in .env for production. Anyone with this secret can create a new admin.
+    # Leave blank to disable public admin registration (use seeder admin account instead).
+    ADMIN_INVITE_SECRET: str = "MEDORA-ADMIN-SETUP-2026"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

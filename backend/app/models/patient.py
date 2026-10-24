@@ -41,9 +41,11 @@ class Patient(Base):
     visits = relationship("MedicalVisit", back_populates="patient", cascade="all, delete-orphan")
     documents = relationship("MedicalDocument", back_populates="patient", cascade="all, delete-orphan")
     qr_tokens = relationship("QRToken", back_populates="patient", cascade="all, delete-orphan")
+    medical_cards = relationship("MedicalCard", back_populates="patient", cascade="all, delete-orphan")
     consents = relationship("Consent", back_populates="patient", cascade="all, delete-orphan")
     access_requests = relationship("AccessRequest", back_populates="patient", cascade="all, delete-orphan")
     emergency_events = relationship("EmergencyAccessEvent", back_populates="patient", cascade="all, delete-orphan")
+    consultation_requests = relationship("ConsultationRequest", back_populates="patient", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="patient", cascade="all, delete-orphan")
 
 

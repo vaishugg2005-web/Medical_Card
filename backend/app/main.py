@@ -9,6 +9,8 @@ from app.core.config import settings
 from app.database.base import Base
 from app.database.session import engine, SessionLocal
 from app.database.seeder import seed_database
+from app.database.multidb import sync_all_multidb
+from app.database.migration import auto_migrate_all
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.rate_limiter import RateLimiterMiddleware
 
@@ -22,17 +24,21 @@ from app.api.v1.access import router as access_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.fhir import router as fhir_router
 from app.api.v1.metrics import router as metrics_router
+from app.api.v1.appointments import router as appointments_router
+from app.api.v1.medical_cards import router as medical_card_router, resolution_router as medical_card_resolution_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure tables exist and database is seeded with demo accounts
+    # Startup: Ensure tables exist, apply any schema migrations, and seed
     Base.metadata.create_all(bind=engine)
+    auto_migrate_all()
     db = SessionLocal()
     try:
         seed_database(db)
+        sync_all_multidb()
     finally:
         db.close()
     yield
@@ -64,6 +70,9 @@ app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Aut
 app.include_router(patients_router, prefix=f"{settings.API_V1_STR}/patients", tags=["Patient Portal"])
 app.include_router(doctors_router, prefix=f"{settings.API_V1_STR}/doctors", tags=["Doctor Portal"])
 app.include_router(admin_router, prefix=f"{settings.API_V1_STR}/admin", tags=["System Administration"])
+app.include_router(appointments_router, prefix=f"{settings.API_V1_STR}/appointments", tags=["Appointments & Consultations"])
+app.include_router(medical_card_router, prefix=f"{settings.API_V1_STR}/patients/me/medical-card", tags=["Patient Medical Card & QR"])
+app.include_router(medical_card_resolution_router, prefix=f"{settings.API_V1_STR}/medical-cards", tags=["Medical Card Resolution & Scan"])
 app.include_router(qr_router, prefix=f"{settings.API_V1_STR}/qr", tags=["QR Management & Resolution"])
 app.include_router(access_router, prefix=f"{settings.API_V1_STR}/access", tags=["Access Control & Break-Glass"])
 app.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI Clinical Summarizer"])

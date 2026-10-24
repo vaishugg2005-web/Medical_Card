@@ -7,11 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: {
-          dark: '#030712',
-          card: '#0f172a',
-          accent: '#06b6d4',
-          triage: '#ef4444',
+        medora: {
+          navy: '#102A43',
+          teal: '#0D9488',
+          'bright-teal': '#14B8A6',
+          'soft-mint': '#E8F5F2',
+          'cool-gray': '#F4F7FA',
+          white: '#FFFFFF',
         }
       }
     },

@@ -8,6 +8,7 @@ from app.models.patient import Patient, EmergencyContact
 from app.models.doctor import Doctor, Hospital, DoctorDocument
 from app.models.medical import Allergy, Medication, MedicalCondition, Surgery, MedicalVisit, MedicalDocument
 from app.models.access import QRToken
+from app.models.medical_card import MedicalCard
 from app.services.qr_service import QRService
 
 def seed_database(db: Session):
@@ -302,6 +303,25 @@ def seed_database(db: Session):
         client_entropy_hint="demo-ent"
     )
     db.add(static_token)
+
+    demo_card = MedicalCard(
+        card_uuid="demo-card-uuid-9812",
+        card_number="MED-CARD-2026-9812",
+        patient_id=patient_profile.id,
+        token_hash=QRService.hash_token("demo-emergency-token-9812"),
+        raw_token_preview="demo-emer...9812",
+        token_version=1,
+        card_status="ACTIVE",
+        payload_mode="SECURE_TOKEN",
+        payload_schema_version="1.0",
+        issued_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+        last_updated_at=datetime.now(timezone.utc),
+        issued_by_actor="SYSTEM_SEEDER",
+        triage_classification=None,
+        emergency_notes=patient_profile.emergency_instructions
+    )
+    db.add(demo_card)
 
     db.commit()
     print("✅ Seed complete! Demo accounts ready:")

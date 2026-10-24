@@ -72,3 +72,24 @@ class QRToken(Base):
     client_entropy_hint = Column(String(50), nullable=True)  # Key fragment hint for E2EE simulation
 
     patient = relationship("Patient", back_populates="qr_tokens")
+
+
+class ConsultationRequest(Base):
+    __tablename__ = "consultation_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
+    doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_type = Column(String(50), default="CONSULTATION")  # CONSULTATION, RECORD_REVIEW, FOLLOW_UP
+    consultation_mode = Column(String(50), default="IN_PERSON")  # IN_PERSON, TELE_CONSULTATION
+    reason = Column(Text, nullable=False)
+    preferred_date = Column(String(100), nullable=True)
+    slot_time = Column(String(50), nullable=True)
+    status = Column(String(50), default="PENDING")  # PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED
+    doctor_response = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    patient = relationship("Patient", back_populates="consultation_requests")
+    doctor = relationship("Doctor", back_populates="consultation_requests")
+
